@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:mycoolid/utils/show_attendance_mode_validate_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
@@ -58,7 +59,6 @@ class _DraggableSheetState extends State<DraggableSheet> {
   }
 
   void toggleButton() async {
-    await _attendanceModeValidate();
     setState(() {
       isEnabled = !isEnabled;
     });
@@ -73,6 +73,10 @@ class _DraggableSheetState extends State<DraggableSheet> {
   }
 
   Future<void> _attendanceModeValidate() async {
+    if (!isEnabled) {
+      return;
+    }
+
     String? androidId = widget.androidId;
     if (androidId != null) {
       final url = 'https://mcid.in/app/att.php?param=VALID~$androidId';
@@ -90,11 +94,8 @@ class _DraggableSheetState extends State<DraggableSheet> {
           } else if (parsedResult.contains('P~')) {
             final soundUrl = parsedResult.split('~')[2];
             _playSound(soundUrl);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(parsedResult.split('~')[1]),
-              ),
-            );
+            showAttendanceModeValidateDialog(
+                context, parsedResult.split('~')[1]);
           }
         }
       } else {
@@ -120,6 +121,7 @@ class _DraggableSheetState extends State<DraggableSheet> {
         ),
       );
       await player.play();
+      toggleButton();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -221,7 +223,7 @@ class _DraggableSheetState extends State<DraggableSheet> {
                             children: [
                               IconButton(
                                 onPressed: () {
-                                  toggleButton();
+                                  _attendanceModeValidate();
                                 },
                                 icon: Image.asset(
                                   isEnabled

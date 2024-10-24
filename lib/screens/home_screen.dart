@@ -7,8 +7,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:mycoolid/screens/components/custom_border.dart';
 import 'package:mycoolid/screens/components/draggable_sheet.dart';
-import 'package:mycoolid/utils/text_dialog.dart';
-import 'package:mycoolid/utils/url_dialog.dart';
+import 'package:mycoolid/utils/show_text_dialog.dart';
+import 'package:mycoolid/utils/show_url_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'components/scanner_clipper.dart';
 
