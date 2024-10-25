@@ -15,12 +15,14 @@ class DraggableSheet extends StatefulWidget {
   final MobileScannerController mobileScannerController;
   final ValueChanged<bool> onSwitchChanged;
   final String? androidId;
+  final ValueNotifier<bool> isAttendanceEnabledNotifier;
 
   const DraggableSheet({
     super.key,
     required this.mobileScannerController,
     required this.onSwitchChanged,
     required this.androidId,
+    required this.isAttendanceEnabledNotifier,
   });
 
   @override
@@ -28,9 +30,8 @@ class DraggableSheet extends StatefulWidget {
 }
 
 class _DraggableSheetState extends State<DraggableSheet> {
-  bool isEnabled = false;
   bool isSwitched = false;
-  bool isTrochOn = false;
+  bool isTorchOn = false;
   final AudioPlayer player = AudioPlayer();
 
   @override
@@ -43,7 +44,7 @@ class _DraggableSheetState extends State<DraggableSheet> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       isSwitched = prefs.getBool('scanSound') ?? false;
-      isTrochOn = prefs.getBool('torchState') ?? false;
+      isTorchOn = prefs.getBool('torchState') ?? false;
     });
   }
 
@@ -58,25 +59,15 @@ class _DraggableSheetState extends State<DraggableSheet> {
     });
   }
 
-  void toggleButton() async {
-    setState(() {
-      isEnabled = !isEnabled;
-    });
-  }
-
   void toggleTorch() {
     setState(() {
-      isTrochOn = !isTrochOn;
+      isTorchOn = !isTorchOn;
     });
     widget.mobileScannerController.toggleTorch();
-    _saveTorchState(isTrochOn);
+    _saveTorchState(isTorchOn);
   }
 
   Future<void> _attendanceModeValidate() async {
-    if (!isEnabled) {
-      return;
-    }
-
     String? androidId = widget.androidId;
     if (androidId != null) {
       final url = 'https://mcid.in/app/att.php?param=VALID~$androidId';
@@ -88,21 +79,19 @@ class _DraggableSheetState extends State<DraggableSheet> {
         if (result['result'] != null) {
           final parsedResult = result['result'].toString();
 
-          if (parsedResult.contains('N~1~')) {
+          if (parsedResult.contains('N~1~') || parsedResult.contains('P~')) {
             final soundUrl = parsedResult.split('~')[2];
             _playSound(soundUrl);
-          } else if (parsedResult.contains('P~')) {
-            final soundUrl = parsedResult.split('~')[2];
-            _playSound(soundUrl);
-            showAttendanceModeValidateDialog(
-                context, parsedResult.split('~')[1]);
+
+            if (parsedResult.contains('P~')) {
+              showAttendanceModeValidateDialog(
+                  context, parsedResult.split('~')[1]);
+            }
           }
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cannot connect to server'),
-          ),
+          const SnackBar(content: Text('Cannot connect to server')),
         );
       }
     }
@@ -115,19 +104,26 @@ class _DraggableSheetState extends State<DraggableSheet> {
           .replaceAll(r'\/', '/')
           .replaceFirst('https:/', 'https://');
 
-      await player.setAudioSource(
-        AudioSource.uri(
-          Uri.parse(correctedUrl),
-        ),
-      );
+      await player.setAudioSource(AudioSource.uri(Uri.parse(correctedUrl)));
       await player.play();
-      toggleButton();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot play the sound'),
-        ),
+        const SnackBar(content: Text('Cannot play the sound')),
       );
+    }
+  }
+
+  void toggleAttendanceMode() async {
+    if (!widget.isAttendanceEnabledNotifier.value) {
+      await _attendanceModeValidate();
+
+      setState(() {
+        widget.isAttendanceEnabledNotifier.value = true;
+      });
+    } else {
+      setState(() {
+        widget.isAttendanceEnabledNotifier.value = false;
+      });
     }
   }
 
@@ -139,9 +135,9 @@ class _DraggableSheetState extends State<DraggableSheet> {
       maxChildSize: 0.5,
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Color.fromARGB(255, 31, 29, 29),
-            borderRadius: BorderRadius.only(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.5),
+            borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(50),
               topRight: Radius.circular(50),
             ),
@@ -166,102 +162,38 @@ class _DraggableSheetState extends State<DraggableSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          Column(
-                            children: [
-                              IconButton(
-                                onPressed: () {
-                                  SystemNavigator.pop();
-                                },
-                                icon: Image.asset(
-                                  'assets/button_close.png',
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                  height:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                ),
-                              ),
-                              const Text(
-                                'Close\nApp',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.cyan),
-                              ),
-                            ],
+                          _buildIconButton(
+                            'assets/button_close.png',
+                            'Close\nApp',
+                            () => SystemNavigator.pop(),
                           ),
-                          Column(
-                            children: [
-                              IconButton(
-                                onPressed: () async {
-                                  final Uri uri = Uri(
-                                      host: 'mycoolid.com', scheme: 'https');
-                                  try {
-                                    await launchUrl(uri,
-                                        mode: LaunchMode.externalApplication);
-                                  } catch (e) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error: $e'),
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: Image.asset(
-                                  'assets/button_open_mcid.png',
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                  height:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                ),
-                              ),
-                              const Text(
-                                'Open\nMyCool ID',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.cyan),
-                              ),
-                            ],
+                          _buildIconButton(
+                            'assets/button_open_mcid.png',
+                            'Open\nMyCool ID',
+                            () async {
+                              final Uri uri =
+                                  Uri(host: 'mycoolid.com', scheme: 'https');
+                              try {
+                                await launchUrl(uri,
+                                    mode: LaunchMode.externalApplication);
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            },
                           ),
-                          Column(
-                            children: [
-                              IconButton(
-                                onPressed: () {
-                                  _attendanceModeValidate();
-                                },
-                                icon: Image.asset(
-                                  isEnabled
-                                      ? 'assets/button_my_school.png'
-                                      : 'assets/button_my_school_disable.png',
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                  height:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                ),
-                              ),
-                              const Text(
-                                'Switch To\nAttendance',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.cyan),
-                              ),
-                            ],
+                          _buildIconButton(
+                            widget.isAttendanceEnabledNotifier.value
+                                ? 'assets/button_my_school.png'
+                                : 'assets/button_my_school_disable.png',
+                            'Switch To\nAttendance',
+                            toggleAttendanceMode,
                           ),
-                          Column(
-                            children: [
-                              IconButton(
-                                onPressed: () {
-                                  toggleTorch();
-                                },
-                                icon: Image.asset(
-                                  'assets/button_flash_light.png',
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                  height:
-                                      MediaQuery.of(context).size.width * 0.15,
-                                ),
-                              ),
-                              const Text(
-                                'Mobile\nFlash Light',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.cyan),
-                              ),
-                            ],
+                          _buildIconButton(
+                            'assets/button_flash_light.png',
+                            'Mobile\nFlash Light',
+                            toggleTorch,
                           ),
                           Column(
                             children: [
@@ -323,6 +255,27 @@ class _DraggableSheetState extends State<DraggableSheet> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildIconButton(
+      String assetPath, String label, VoidCallback onPressed) {
+    return Column(
+      children: [
+        IconButton(
+          onPressed: onPressed,
+          icon: Image.asset(
+            assetPath,
+            width: MediaQuery.of(context).size.width * 0.15,
+            height: MediaQuery.of(context).size.width * 0.15,
+          ),
+        ),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.cyan),
+        ),
+      ],
     );
   }
 }

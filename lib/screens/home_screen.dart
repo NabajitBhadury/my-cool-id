@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:convert';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +12,7 @@ import 'package:mycoolid/utils/show_text_dialog.dart';
 import 'package:mycoolid/utils/show_url_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'components/scanner_clipper.dart';
+import 'package:http/http.dart' as http;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isScanSoundOn = false;
   String? androidId = 'Unknown';
   double _zoomLevel = 1.0;
+  late String scanTime;
+  final AudioPlayer player = AudioPlayer();
+  final ValueNotifier<bool> isAttendanceEnabledNotifier = ValueNotifier(false);
 
   @override
   void initState() {
@@ -34,6 +39,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     _loadScanSoundState();
     _getDeviceInfo();
+    isAttendanceEnabledNotifier.addListener(() {
+      setState(() {});
+    });
   }
 
   @override
@@ -61,7 +69,29 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void onDetect(BarcodeCapture scan) {
+  Future<void> _playSound(String url) async {
+    try {
+      final correctedUrl = url
+          .replaceAll(r'\\', '/')
+          .replaceAll(r'\/', '/')
+          .replaceFirst('https:/', 'https://');
+
+      await player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(correctedUrl),
+        ),
+      );
+      await player.play();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot play the sound'),
+        ),
+      );
+    }
+  }
+
+  void onDetect(BarcodeCapture scan) async {
     var barcode = scan.barcodes;
     if (barcode.isEmpty) {
       return;
@@ -70,8 +100,39 @@ class _HomeScreenState extends State<HomeScreen> {
     for (var code in barcode) {
       var raw = code.rawValue;
       if (raw != null) {
+        if (isAttendanceEnabledNotifier.value) {
+          final isValidUrl = raw.startsWith('https://mcid.in/') ||
+              raw.startsWith('https://mycoolid.com/');
+          if (!isValidUrl) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Invalid QR Code'),
+            ));
+            return;
+          } else {
+            final url =
+                'https://mcid.in/app/att.php?param=ATTEN~$androidId~$raw';
+            final response = await http.get(Uri.parse(url));
+
+            if (response.statusCode == 200) {
+              final Map<String, dynamic> result = jsonDecode(response.body);
+              final resultParts = result['result'].split('~');
+              scanTime = resultParts[1].replaceFirst('current time: ', '');
+              print('time is : $scanTime');
+              String soundUrl = resultParts[2];
+              _playSound(soundUrl);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cannot load the attendance'),
+                ),
+              );
+            }
+            return;
+          }
+        }
+
         if (isScanSoundOn) {
-          AudioPlayer()
+          player
             ..setAsset('assets/sound.mp3')
             ..play();
         }
@@ -204,6 +265,7 @@ class _HomeScreenState extends State<HomeScreen> {
             mobileScannerController: _mobileScannerController,
             onSwitchChanged: _updateScanSound,
             androidId: androidId,
+            isAttendanceEnabledNotifier: isAttendanceEnabledNotifier,
           ),
         ],
       ),
