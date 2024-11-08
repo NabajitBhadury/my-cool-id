@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late String scanTime;
   final AudioPlayer player = AudioPlayer();
   final ValueNotifier<bool> isAttendanceEnabledNotifier = ValueNotifier(false);
+  final List<String> _lastFiveScanTimes = [];
 
   @override
   void initState() {
@@ -48,6 +49,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _mobileScannerController.dispose();
     super.dispose();
+  }
+
+  void _addScanTime(String time) {
+    setState(() {
+      _lastFiveScanTimes.insert(0, time);
+      if (_lastFiveScanTimes.length > 5) {
+        _lastFiveScanTimes.removeLast();
+      }
+    });
   }
 
   Future<void> _loadScanSoundState() async {
@@ -104,9 +114,34 @@ class _HomeScreenState extends State<HomeScreen> {
           final isValidUrl = raw.startsWith('https://mcid.in/') ||
               raw.startsWith('https://mycoolid.com/');
           if (!isValidUrl) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Invalid QR Code'),
-            ));
+            player
+              ..setAsset('assets/warning.mp3')
+              ..play();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  children: [
+                    Icon(Icons.error, color: Colors.white),
+                    SizedBox(width: 10),
+                    Text(
+                      'Invalid QR Code',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.redAccent,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                margin: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).size.height * 0.8,
+                  left: 10,
+                  right: 10,
+                ),
+                duration: const Duration(seconds: 2),
+              ),
+            );
             return;
           } else {
             final url =
@@ -117,13 +152,39 @@ class _HomeScreenState extends State<HomeScreen> {
               final Map<String, dynamic> result = jsonDecode(response.body);
               final resultParts = result['result'].split('~');
               scanTime = resultParts[1].replaceFirst('current time: ', '');
-              print('time is : $scanTime');
-              String soundUrl = resultParts[2];
-              _playSound(soundUrl);
+              String time = "Scanned at $scanTime";
+              _addScanTime(time);
+              // String soundUrl = resultParts[2];
+              // _playSound(soundUrl);
+
+              // valid qr code playing sound
+              player
+                ..setAsset('assets/blip.mp3')
+                ..play();
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cannot load the attendance'),
+                SnackBar(
+                  content: const Row(
+                    children: [
+                      Icon(Icons.error, color: Colors.white),
+                      SizedBox(width: 10),
+                      Text(
+                        'Cannot load the attendance',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: Colors.redAccent,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  margin: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).size.height * 0.8,
+                    left: 10,
+                    right: 10,
+                  ),
+                  duration: const Duration(seconds: 2),
                 ),
               );
             }
@@ -160,9 +221,32 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       final result = await _mobileScannerController.analyzeImage(image.path);
       if (result == null) {
+        player
+          ..setAsset('assets/warning.mp3')
+          ..play();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid Image'),
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 10),
+                Text(
+                  'Invalid Image',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: EdgeInsets.only(
+              bottom: MediaQuery.of(context).size.height * 0.8,
+              left: 10,
+              right: 10,
+            ),
+            duration: const Duration(seconds: 2),
           ),
         );
       } else {
@@ -259,6 +343,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   _mobileScannerController.setZoomScale(_zoomLevel);
                 });
               },
+            ),
+          ),
+          Positioned(
+            top: 40,
+            left: 0,
+            right: 0,
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                children: _lastFiveScanTimes.asMap().entries.map((entry) {
+                  int index = entry.key;
+                  String time = entry.value;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 5),
+                    padding: const EdgeInsets.all(8),
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(5),
+                      color: index % 2 == 0
+                          ? Colors.cyan.withOpacity(0.3)
+                          : Colors.grey[800]?.withOpacity(0.3),
+                    ),
+                    child: Text(
+                      time,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  );
+                }).toList(),
+              ),
             ),
           ),
           DraggableSheet(

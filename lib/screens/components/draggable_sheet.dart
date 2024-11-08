@@ -80,8 +80,11 @@ class _DraggableSheetState extends State<DraggableSheet> {
           final parsedResult = result['result'].toString();
 
           if (parsedResult.contains('N~1~') || parsedResult.contains('P~')) {
-            final soundUrl = parsedResult.split('~')[2];
-            _playSound(soundUrl);
+            // final soundUrl = parsedResult.split('~')[2];
+            // _playSound(soundUrl);
+            player
+              ..setAsset('assets/2message.mp3')
+              ..play();
 
             if (parsedResult.contains('P~')) {
               showAttendanceModeValidateDialog(
