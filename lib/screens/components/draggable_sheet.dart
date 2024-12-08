@@ -33,6 +33,8 @@ class _DraggableSheetState extends State<DraggableSheet> {
   bool isSwitched = false;
   bool isTorchOn = false;
   final AudioPlayer player = AudioPlayer();
+  final ValueNotifier<String?> schoolNameNotifier =
+      ValueNotifier<String?>(null);
 
   @override
   void initState() {
@@ -45,12 +47,19 @@ class _DraggableSheetState extends State<DraggableSheet> {
     setState(() {
       isSwitched = prefs.getBool('scanSound') ?? false;
       isTorchOn = prefs.getBool('torchState') ?? false;
+      widget.isAttendanceEnabledNotifier.value =
+          prefs.getBool('attendanceEnabled') ?? false;
     });
   }
 
   Future<void> _saveTorchState(bool value) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool('torchState', value);
+  }
+
+  Future<void> _saveAttendanceMode(bool value) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('attendanceEnabled', value);
   }
 
   void toggleSwitch(bool value) {
@@ -79,17 +88,27 @@ class _DraggableSheetState extends State<DraggableSheet> {
         if (result['result'] != null) {
           final parsedResult = result['result'].toString();
 
-          if (parsedResult.contains('N~1~') || parsedResult.contains('P~')) {
-            // final soundUrl = parsedResult.split('~')[2];
-            // _playSound(soundUrl);
+          // Parse result to extract school name
+          if (parsedResult.startsWith('N~')) {
+            final parts = parsedResult.split('~');
+            if (parts.length > 1) {
+              final schoolName = parts[1];
+              schoolNameNotifier.value = schoolName;
+              player
+                ..setAsset('assets/blip.mp3')
+                ..play();
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Unexpected response format')),
+              );
+            }
+          } else if (parsedResult.contains('P~')) {
             player
               ..setAsset('assets/2message.mp3')
               ..play();
 
-            if (parsedResult.contains('P~')) {
-              showAttendanceModeValidateDialog(
-                  context, parsedResult.split('~')[1]);
-            }
+            showAttendanceModeValidateDialog(
+                context, parsedResult.split('~')[1]);
           }
         }
       } else {
@@ -123,10 +142,13 @@ class _DraggableSheetState extends State<DraggableSheet> {
       setState(() {
         widget.isAttendanceEnabledNotifier.value = true;
       });
+      _saveAttendanceMode(true);
     } else {
       setState(() {
         widget.isAttendanceEnabledNotifier.value = false;
+        schoolNameNotifier.value = null;
       });
+      _saveAttendanceMode(false);
     }
   }
 
@@ -155,6 +177,24 @@ class _DraggableSheetState extends State<DraggableSheet> {
                   color: Colors.grey[400],
                   borderRadius: BorderRadius.circular(10),
                 ),
+              ),
+              ValueListenableBuilder<String?>(
+                valueListenable: schoolNameNotifier,
+                builder: (context, schoolName, child) {
+                  return schoolName != null
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 1.0),
+                          child: Text(
+                            schoolName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink();
+                },
               ),
               Expanded(
                 child: ListView(
