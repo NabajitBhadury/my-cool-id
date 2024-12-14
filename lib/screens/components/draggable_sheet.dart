@@ -49,6 +49,8 @@ class _DraggableSheetState extends State<DraggableSheet> {
       isTorchOn = prefs.getBool('torchState') ?? false;
       widget.isAttendanceEnabledNotifier.value =
           prefs.getBool('attendanceEnabled') ?? false;
+
+      schoolNameNotifier.value = prefs.getString('schoolName');
     });
   }
 
@@ -79,8 +81,12 @@ class _DraggableSheetState extends State<DraggableSheet> {
   Future<void> _attendanceModeValidate() async {
     String? androidId = widget.androidId;
     if (androidId != null) {
-      final url = 'https://mcid.in/app/att.php?param=VALID~$androidId';
-      final response = await http.get(Uri.parse(url));
+      const url = 'https://mcid.in/app/att2.php';
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {'param': 'VALID~$androidId'},
+      );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> result = jsonDecode(response.body);
@@ -94,6 +100,11 @@ class _DraggableSheetState extends State<DraggableSheet> {
             if (parts.length > 1) {
               final schoolName = parts[1];
               schoolNameNotifier.value = schoolName;
+
+              // Save schoolName to SharedPreferences
+              SharedPreferences prefs = await SharedPreferences.getInstance();
+              await prefs.setString('schoolName', schoolName);
+
               player
                 ..setAsset('assets/blip.mp3')
                 ..play();
@@ -148,6 +159,10 @@ class _DraggableSheetState extends State<DraggableSheet> {
         widget.isAttendanceEnabledNotifier.value = false;
         schoolNameNotifier.value = null;
       });
+
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove('schoolName');
+
       _saveAttendanceMode(false);
     }
   }
@@ -245,31 +260,39 @@ class _DraggableSheetState extends State<DraggableSheet> {
                                 itemBuilder: (BuildContext context) => [
                                   PopupMenuItem<String>(
                                     value: 'Switch',
-                                    child: StatefulBuilder(
-                                      builder: (BuildContext context,
-                                          StateSetter setState) {
-                                        return Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(isSwitched
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        ValueListenableBuilder<bool>(
+                                          valueListenable:
+                                              ValueNotifier(isSwitched),
+                                          builder: (context, value, _) {
+                                            return Text(value
                                                 ? 'Scan Sound On'
-                                                : 'Scan Sound Off'),
-                                            Switch(
-                                              value: isSwitched,
-                                              onChanged: (bool value) {
-                                                setState(() {
-                                                  isSwitched = value;
-                                                });
-                                                toggleSwitch(value);
-                                                widget.onSwitchChanged(value);
-                                                Navigator.of(context).pop();
-                                              },
-                                              activeColor: Colors.cyan,
-                                            ),
-                                          ],
-                                        );
-                                      },
+                                                : 'Scan Sound Off');
+                                          },
+                                        ),
+                                        Switch(
+                                          value: isSwitched,
+                                          onChanged: (bool value) async {
+                                            setState(() {
+                                              isSwitched = value;
+                                            });
+                                            toggleSwitch(value);
+                                            widget.onSwitchChanged(value);
+
+                                            SharedPreferences prefs =
+                                                await SharedPreferences
+                                                    .getInstance();
+                                            await prefs.setBool(
+                                                'scanSound', value);
+
+                                            Navigator.of(context).pop();
+                                          },
+                                          activeColor: Colors.cyan,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],

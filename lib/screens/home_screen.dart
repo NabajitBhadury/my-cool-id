@@ -30,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late String scanTime;
   final AudioPlayer player = AudioPlayer();
   final ValueNotifier<bool> isAttendanceEnabledNotifier = ValueNotifier(false);
-  final List<String> _lastFiveScanTimes = [];
+  final List<String> _lastThreeScanTimes = [];
 
   @override
   void initState() {
@@ -53,9 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _addScanTime(String time) {
     setState(() {
-      _lastFiveScanTimes.insert(0, time);
-      if (_lastFiveScanTimes.length > 5) {
-        _lastFiveScanTimes.removeLast();
+      _lastThreeScanTimes.insert(0, time);
+      if (_lastThreeScanTimes.length > 5) {
+        _lastThreeScanTimes.removeLast();
       }
     });
   }
@@ -144,9 +144,14 @@ class _HomeScreenState extends State<HomeScreen> {
             );
             return;
           } else {
-            final url =
-                'https://mcid.in/app/att.php?param=ATTEN~$androidId~$raw';
-            final response = await http.get(Uri.parse(url));
+            const url = 'https://mcid.in/app/att2.php';
+            final response = await http.post(
+              Uri.parse(url),
+              headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+              body: {
+                'param': 'ATTEN~$androidId~$raw',
+              },
+            );
 
             if (response.statusCode == 200) {
               final Map<String, dynamic> result = jsonDecode(response.body);
@@ -352,23 +357,27 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Padding(
               padding: const EdgeInsets.all(12.0),
               child: Column(
-                children: _lastFiveScanTimes.asMap().entries.map((entry) {
+                children: _lastThreeScanTimes.asMap().entries.map((entry) {
                   int index = entry.key;
                   String time = entry.value;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 5),
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(5),
                     width: double.infinity,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(8),
                       color: index % 2 == 0
                           ? Colors.cyan.withOpacity(0.3)
                           : Colors.grey[800]?.withOpacity(0.3),
                     ),
                     child: Text(
                       time,
-                      style: const TextStyle(color: Colors.white),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   );
                 }).toList(),
