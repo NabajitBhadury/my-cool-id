@@ -4,8 +4,7 @@
 
 
     <application
-        android:label="mycoolid"
-        android:name="${applicationName}"
+        android:label="MyCool ID QR Scanner"
         android:icon="@mipmap/icon">
         <activity
             android:name=".MainActivity"

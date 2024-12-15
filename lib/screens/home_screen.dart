@@ -351,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Positioned(
-            top: 40,
+            top: 30,
             left: 0,
             right: 0,
             child: Padding(
@@ -360,6 +360,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: _lastThreeScanTimes.asMap().entries.map((entry) {
                   int index = entry.key;
                   String time = entry.value;
+                  double deviceWidth = MediaQuery.of(context).size.width;
+                  double fontSize = deviceWidth * 0.065;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 5),
                     padding: const EdgeInsets.all(5),
@@ -373,9 +375,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: Text(
                       time,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
-                        fontSize: 20,
+                        fontSize: fontSize,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
