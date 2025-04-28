@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:mycoolid/screens/about_app_screen.dart';
 import 'package:mycoolid/utils/show_attendance_mode_validate_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,6 +17,7 @@ class DraggableSheet extends StatefulWidget {
   final ValueChanged<bool> onSwitchChanged;
   final String? androidId;
   final ValueNotifier<bool> isAttendanceEnabledNotifier;
+  final Function(bool) onCameraToggle;
 
   const DraggableSheet({
     super.key,
@@ -23,6 +25,7 @@ class DraggableSheet extends StatefulWidget {
     required this.onSwitchChanged,
     required this.androidId,
     required this.isAttendanceEnabledNotifier,
+    required this.onCameraToggle,
   });
 
   @override
@@ -35,6 +38,7 @@ class _DraggableSheetState extends State<DraggableSheet> {
   final AudioPlayer player = AudioPlayer();
   final ValueNotifier<String?> schoolNameNotifier =
       ValueNotifier<String?>(null);
+  bool isFrontCamera = true;
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _DraggableSheetState extends State<DraggableSheet> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       isSwitched = prefs.getBool('scanSound') ?? false;
+      isFrontCamera = prefs.getBool('isFrontCamera') ?? true;
       isTorchOn = prefs.getBool('torchState') ?? false;
       widget.isAttendanceEnabledNotifier.value =
           prefs.getBool('attendanceEnabled') ?? false;
@@ -62,6 +67,15 @@ class _DraggableSheetState extends State<DraggableSheet> {
   Future<void> _saveAttendanceMode(bool value) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool('attendanceEnabled', value);
+  }
+
+  void toggleCamera(bool value) async {
+    setState(() {
+      isFrontCamera = value;
+    });
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isFrontCamera', value);
+    widget.onCameraToggle(value);
   }
 
   void toggleSwitch(bool value) {
@@ -293,6 +307,59 @@ class _DraggableSheetState extends State<DraggableSheet> {
                                           activeColor: Colors.cyan,
                                         ),
                                       ],
+                                    ),
+                                  ),
+                                  PopupMenuItem<String>(
+                                    value: 'Camera',
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        ValueListenableBuilder<bool>(
+                                          valueListenable:
+                                              ValueNotifier(isFrontCamera),
+                                          builder: (context, value, _) {
+                                            return Text(value
+                                                ? 'Front Camera'
+                                                : 'Back Camera');
+                                          },
+                                        ),
+                                        Switch(
+                                          value: isFrontCamera,
+                                          onChanged: (bool value) async {
+                                            setState(() {
+                                              isFrontCamera = value;
+                                            });
+                                            toggleCamera(value);
+
+                                            SharedPreferences prefs =
+                                                await SharedPreferences
+                                                    .getInstance();
+                                            await prefs.setBool(
+                                                'isFrontCamera', value);
+
+                                            Navigator.of(context).pop();
+                                          },
+                                          activeColor: Colors.cyan,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem<String>(
+                                    value: 'Camera',
+                                    child: TextButton(
+                                      onPressed: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const AboutAppScreen(),
+                                          ),
+                                        );
+                                      },
+                                      child: const Text(
+                                        'About App',
+                                        style: TextStyle(color: Colors.black),
+                                      ),
                                     ),
                                   ),
                                 ],

@@ -1,5 +1,4 @@
-// ignore_for_file: use_build_context_synchronously
-
+import 'dart:async';
 import 'dart:convert';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -27,22 +26,45 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isScanSoundOn = false;
   String? androidId = 'Unknown';
   double _zoomLevel = 1.0;
-  late String scanTime;
+  late String scanString;
   final AudioPlayer player = AudioPlayer();
   final ValueNotifier<bool> isAttendanceEnabledNotifier = ValueNotifier(false);
-  final List<String> _lastThreeScanTimes = [];
+  final ValueNotifier<String> currentTimeNotifier =
+      ValueNotifier<String>(_getCurrentTime());
+  final List<String> _lastThreeScanString = [];
+  bool isFrontCamera = true;
+  late Future<void> _initialization;
 
   @override
   void initState() {
     super.initState();
-    _mobileScannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-    );
+    _initialization = _loadPreferencesAndInitializeController();
     _loadScanSoundState();
     _getDeviceInfo();
     isAttendanceEnabledNotifier.addListener(() {
       setState(() {});
     });
+  }
+
+  Future<void> _loadPreferencesAndInitializeController() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isFrontCamera = prefs.getBool('isFrontCamera') ?? true;
+      _zoomLevel = prefs.getDouble('zoomLevel') ?? 1.0;
+    });
+    _mobileScannerController = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      facing: isFrontCamera ? CameraFacing.front : CameraFacing.back,
+    );
+    // Initialize the controller
+    await _mobileScannerController.start();
+    // Set initial zoom level
+    await _mobileScannerController.setZoomScale(_zoomLevel);
+  }
+
+  Future<void> _saveZoomLevel(double value) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('zoomLevel', value);
   }
 
   @override
@@ -51,11 +73,24 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _addScanTime(String time) {
+  static String _getCurrentTime() {
+    return DateTime.now().toLocal().toString().split(' ')[1].split('.')[0];
+  }
+
+  void _toggleCamera(bool value) async {
     setState(() {
-      _lastThreeScanTimes.insert(0, time);
-      if (_lastThreeScanTimes.length > 5) {
-        _lastThreeScanTimes.removeLast();
+      isFrontCamera = value;
+    });
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isFrontCamera', value);
+    _mobileScannerController.switchCamera();
+  }
+
+  void _addScanString(String time) {
+    setState(() {
+      _lastThreeScanString.insert(0, time);
+      if (_lastThreeScanString.length > 3) {
+        _lastThreeScanString.removeLast();
       }
     });
   }
@@ -77,28 +112,6 @@ class _HomeScreenState extends State<HomeScreen> {
       isScanSoundOn = value;
       _saveScanSoundState();
     });
-  }
-
-  Future<void> _playSound(String url) async {
-    try {
-      final correctedUrl = url
-          .replaceAll(r'\\', '/')
-          .replaceAll(r'\/', '/')
-          .replaceFirst('https:/', 'https://');
-
-      await player.setAudioSource(
-        AudioSource.uri(
-          Uri.parse(correctedUrl),
-        ),
-      );
-      await player.play();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot play the sound'),
-        ),
-      );
-    }
   }
 
   void onDetect(BarcodeCapture scan) async {
@@ -156,9 +169,9 @@ class _HomeScreenState extends State<HomeScreen> {
             if (response.statusCode == 200) {
               final Map<String, dynamic> result = jsonDecode(response.body);
               final resultParts = result['result'].split('~');
-              scanTime = resultParts[1].replaceFirst('current time: ', '');
-              String time = "Scanned at $scanTime";
-              _addScanTime(time);
+              scanString =
+                  resultParts[1].replaceAll(RegExp(r'\[.*'), '').trim();
+              _addScanString(scanString);
               // String soundUrl = resultParts[2];
               // _playSound(soundUrl);
 
@@ -273,126 +286,145 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: _mobileScannerController,
-            onDetect: onDetect,
-          ),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final size = constraints.maxWidth * 0.7;
-              return Stack(
-                children: [
-                  Container(
-                    color: Colors.black.withOpacity(0.5),
-                  ),
-                  Center(
-                    child: CustomBorder(size: size),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: ClipPath(
-                        clipper: ScannerClipper(size),
-                        child: Container(
-                          color: Colors.black.withOpacity(0.5),
+      body: FutureBuilder(
+        future: _initialization,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return const Center(child: Text('Error initializing camera'));
+          } else {
+            return Stack(children: [
+              MobileScanner(
+                controller: _mobileScannerController,
+                onDetect: onDetect,
+              ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = constraints.maxWidth * 0.7;
+                  return Stack(
+                    children: [
+                      Container(
+                        color: Colors.black.withOpacity(0.5),
+                      ),
+                      Center(
+                        child: CustomBorder(size: size),
+                      ),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ClipPath(
+                            clipper: ScannerClipper(size),
+                            child: Container(
+                              color: Colors.black.withOpacity(0.5),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 200,
-                    left: 60,
-                    right: 60,
-                    child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.cyan),
-                        onPressed: () {
-                          _pickImage();
-                        },
-                        child: const Row(
-                          children: [
-                            Icon(
-                              Icons.photo_library,
-                              color: Colors.black,
-                            ),
-                            SizedBox(
-                              width: 8,
-                            ),
-                            Text(
-                              'Upload from Gallery',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        )),
-                  ),
-                ],
-              );
-            },
-          ),
-          Positioned(
-            bottom: 155,
-            left: 20,
-            right: 20,
-            child: Slider(
-              value: _zoomLevel,
-              activeColor: Colors.cyan,
-              inactiveColor: Colors.grey,
-              onChanged: (value) {
-                setState(() {
-                  _zoomLevel = value;
-                  _mobileScannerController.setZoomScale(_zoomLevel);
-                });
-              },
-            ),
-          ),
-          Positioned(
-            top: 30,
-            left: 0,
-            right: 0,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                children: _lastThreeScanTimes.asMap().entries.map((entry) {
-                  int index = entry.key;
-                  String time = entry.value;
-                  double deviceWidth = MediaQuery.of(context).size.width;
-                  double fontSize = deviceWidth * 0.065;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 5),
-                    padding: const EdgeInsets.all(5),
-                    width: double.infinity,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      color: index % 2 == 0
-                          ? Colors.cyan.withOpacity(0.3)
-                          : Colors.grey[800]?.withOpacity(0.3),
-                    ),
-                    child: Text(
-                      time,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.bold,
+                      Positioned(
+                        bottom: 200,
+                        left: 60,
+                        right: 60,
+                        child: ValueListenableBuilder(
+                            valueListenable: isAttendanceEnabledNotifier,
+                            builder: (context, isAttendanceEnabled, child) {
+                              return isAttendanceEnabled
+                                  ? Container()
+                                  : ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.cyan),
+                                      onPressed: () {
+                                        _pickImage();
+                                      },
+                                      child: const Row(
+                                        children: [
+                                          Icon(
+                                            Icons.photo_library,
+                                            color: Colors.black,
+                                          ),
+                                          SizedBox(
+                                            width: 8,
+                                          ),
+                                          Text(
+                                            'Upload from Gallery',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.black,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ],
+                                      ));
+                            }),
                       ),
-                    ),
+                    ],
                   );
-                }).toList(),
+                },
               ),
-            ),
-          ),
-          DraggableSheet(
-            mobileScannerController: _mobileScannerController,
-            onSwitchChanged: _updateScanSound,
-            androidId: androidId,
-            isAttendanceEnabledNotifier: isAttendanceEnabledNotifier,
-          ),
-        ],
+              Positioned(
+                bottom: 155,
+                left: 20,
+                right: 20,
+                child: Slider(
+                  value: _zoomLevel,
+                  activeColor: Colors.cyan,
+                  inactiveColor: Colors.grey,
+                  onChanged: (value) {
+                    setState(() {
+                      _zoomLevel = value;
+                      _mobileScannerController.setZoomScale(_zoomLevel);
+                      _saveZoomLevel(value); // Save zoom level when it changes
+                    });
+                  },
+                ),
+              ),
+              Positioned(
+                top: 30,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    children: _lastThreeScanString.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      String scanString = entry.value;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 5),
+                        padding: const EdgeInsets.all(5),
+                        width: double.infinity,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: index % 2 == 0
+                              ? Colors.cyan.withOpacity(0.3)
+                              : Colors.grey[800]?.withOpacity(0.3),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Text(
+                            scanString,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              DraggableSheet(
+                mobileScannerController: _mobileScannerController,
+                onSwitchChanged: _updateScanSound,
+                androidId: androidId,
+                isAttendanceEnabledNotifier: isAttendanceEnabledNotifier,
+                onCameraToggle: _toggleCamera,
+              ),
+            ]);
+          }
+        },
       ),
     );
   }
